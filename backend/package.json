@@ -1,0 +1,15 @@
+{
+  "name": "pensieve_server",
+  "version": "1.0.0",
+  "description": "Pensieve - A video sharing platform",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "backend",
+    "JavaScript"
+  ],
+  "author": "Md Rezaul Hossain",
+  "license": "ISC"
+}
