@@ -57,7 +57,7 @@ const userSchema = new Schema(
 userSchema.pre("save", async function(next){
     if(!this.isModified("password")) return next();
 
-    this.password = bcrypt.hash(this.password, 10); //10->hash round, this is an algorithmic thing(can be 8 or any other number)
+    this.password = await bcrypt.hash(this.password, 10); //10->hash round, this is an algorithmic thing(can be 8 or any other number)
     next();
 })
 
