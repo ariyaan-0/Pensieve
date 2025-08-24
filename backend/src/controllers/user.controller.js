@@ -3,8 +3,23 @@ import {ApiError} from "../utils/ApiError.js";
 import {User} from "../models/user.model.js";
 import {uploadOnCloudinary} from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
+import jwt from "jsonwebtoken";
 
+const generateAccessAndRefreshTokens = async (userId) => {
+    try{
+        const user = await User.findById(userId);
+        const refreshToken = user.generateRefreshToken();
+        const accessToken = user.generateAccessToken();
 
+        user.refreshToken = refreshToken;
+        await user.save({validateBeforeSave: false}); // basically when you are saving it, the user schema gets invoked, and that schema has some required field such as password! to avoid that we pass {validateBeforeSave: false}
+
+        return {accessToken, refreshToken};
+
+    } catch(error){
+        throw new ApiError(500, "Something went wrong while generating access and refresh token");
+    }
+}
 
 const registerUser = asyncHandler(
     async(req, res) => {
@@ -90,8 +105,140 @@ const registerUser = asyncHandler(
         );
 
     }
-)
+);
 
-export {registerUser};
+
+const loginUser = asyncHandler(async(req, res)=>{
+    // todos---
+    // req body -> data
+    // username or email
+    // find the user
+    // if user is there, password check
+    // access and refresh token
+    // send cookie
+
+    const {email, username, password} = req.body;
+    if(!(username || email)){
+        throw new ApiError(400, "username or email is requried");
+    }
+
+    const user = await User.findOne({
+        $or: [{username}, {email}],
+    });
+
+    if(!user){
+        throw new ApiError(404, "User does not exist");
+    }
+
+    const isPassWordValid = await user.isPasswordCorrect(password);
+
+    if(!isPassWordValid){
+        throw new ApiError(401, "Invalid user Credentials");
+    }
+
+    const {accessToken, refreshToken} = await generateAccessAndRefreshTokens(user._id);
+
+    //now I have to decide in this case updating the object is easier or fetching from database (the updated object) is easier (easier in terms of cost)
+    //in this project : this case I think fetching is okay.
+    const loggedInUser = await User.findById(user._id).select("-password -refreshToken"); //it selects the fields except for the mentioned ones.
+
+    // it secures the cookies so that cannot be modified from the fron-end.
+    const options = {
+        httpOnly: true,
+        secure: true,
+    }
+
+    return res
+        .status(200)
+        .cookie("accessToken", accessToken, options)
+        .cookie("refreshToken", refreshToken, options)
+        .json(
+            new ApiResponse(
+                200, 
+                {
+                    user: loggedInUser, accessToken, refreshToken,
+                },
+                "User logged In Successfully"
+            )
+        )
+
+
+});
+
+const logoutUser = asyncHandler(async(req, res) => {
+    await User.findByIdAndUpdate(
+        req.user._id,
+        {
+            $unset: {
+                refreshToken: 1 //this removes the field from document
+            }
+        },
+        {
+            new: true
+        },
+    );
+
+    const options = {
+        httpOnly: true,
+        secure: true,
+    }
+    
+    return res
+        .status(200)
+        .clearCookie("accessToken", options)
+        .clearCookie("refreshToken", options)
+        .json(new ApiResponse(200, {}, "User Logged out!!!"));
+});
+
+
+const refreshAccessToken = asyncHandler(async(req, res) => {
+    const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken;
+
+    if(!incomingRefreshToken){
+        throw new ApiError(401, "unauthorized request");
+    }
+
+    try {
+        const decodedToken = jwt.verify(
+            incomingRefreshToken,
+            process.env.REFRESH_TOKEN_SECRET,
+        );
+    
+        const user = await User.findById(decodedToken?._id);
+    
+        if(!user){
+            throw new ApiError(401, "Invalid refresh token");
+        }
+    
+        if(incomingRefreshToken !== user?.refreshToken){
+            throw new ApiError(401, "Refresh token is expired or used");
+        }
+    
+        const options = {
+            httpOnly: true,
+            secure: true
+        }
+    
+        const {accessToken, newRefreshToken} = await generateAccessAndRefreshTokens(user._id);
+    
+        return res
+            .status(200)
+            .cookie("accessToken", accessToken, options)
+            .cookie("refreshToken", newRefreshToken, options)
+            .json(
+                new ApiResponse(
+                    200,
+                    {accessToken, refreshToken: newRefreshToken},
+                    "Access token refreshed!!!"
+                )
+            )
+    } catch (error) {
+        throw new ApiError(401, error.message || "invalid refresh token");
+    }
+
+});
+
+
+export {registerUser, loginUser, logoutUser, refreshAccessToken};
 
 
