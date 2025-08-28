@@ -43,7 +43,6 @@ Pensieve is a full-featured video sharing platform built with Node.js and MongoD
    npm run dev
    ```
 
-## Data Model
 
 ## Data Modeling
 
